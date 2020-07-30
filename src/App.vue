@@ -1,5 +1,33 @@
 <template>
   <div id="app">
+    <table class="gridInfo" v-if="trainingScreen === true">
+      <thead>
+      <tr>
+        <th>THETA0</th>
+        <th>THETA1</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>{{ this.theta0 }}</td>
+        <td>{{ this.theta1 }}</td>
+      </tr>
+      </tbody>
+    </table>
+    <table class="gridData" v-if="trainingScreen === true">
+      <thead>
+      <tr>
+        <th>KILOMÉTRAGE</th>
+        <th>PRIX</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr v-for="entry in this.dataCSV" :key="entry.km">
+        <td>{{realValue(entry.km)}}</td>
+        <td>{{realValue(entry.price)}}</td>
+      </tr>
+      </tbody>
+    </table>
     <img alt="Vue logo" src="./assets/logo.png"><br /><br />
     <el-upload
             v-show="trainingScreen === false"
@@ -15,13 +43,17 @@
     </el-upload><br />
     <el-button class="actionButton" type="success" @click="estimate">Faire une estimation</el-button>
     <el-button class="actionButton" v-show="trainingScreen === false" type="success" size="medium" @click="trainingScreenOn">Lancer le training</el-button>
+    <line-chart v-if="trainingScreen === true" :chart-data="dataCollection"></line-chart>
   </div>
 </template>
 
 <script>
 
+import LineChart from "./LineChart";
+
 export default {
   name: 'App',
+  components: {LineChart},
   data() {
     return {
       count: 0,
@@ -33,6 +65,7 @@ export default {
       parse_header: [],
       learningRate: 0.001,
       trainingScreen: false,
+      dataCollection: null,
     }
   },
   methods: {
@@ -56,7 +89,6 @@ export default {
       });
 
       result.pop();
-      console.log(result[1]);
       return result;
     },
 
@@ -68,7 +100,9 @@ export default {
 
         reader.onload = function(event) {
           let csv = event.target.result;
-          elem.dataCSV = elem.csvJSON(csv)
+          elem.dataCSV = elem.csvJSON(csv).sort(function (a, b) {
+            return a["km"] - b["km"] || a["price"] - b["price"];
+          })
         };
       }
     },
@@ -106,32 +140,75 @@ export default {
       let tmpTheta0 = 0;
       let tmpTheta1 = 0;
       while (true) {
-        // console.log("try");
         tmpTheta0 = this.calc_s0();
         tmpTheta1 = this.calc_s1();
         this.theta0 -= tmpTheta0;
         this.theta1 -= tmpTheta1;
         this.calculate_cost();
-        // console.log(this.theta0);
-        // console.log(this.theta1);
-        // console.log("======================================");
-        // console.log(this.cost[this.cost.length - 2] - this.cost[this.cost.length - 1]);
-        // console.log("\n");
         if (this.cost[this.cost.length - 2] - this.cost[this.cost.length - 1] < 0.000000005) {
           break
         }
-        // else {
-        //   break
-        // }
       }
       this.theta0 *= this.norm;
       this.trainingScreen = true;
-      console.log(this.cost.length);
+      this.$message({
+        showClose: true,
+        message: "Nombre d'itérations réalisées :".concat(" ", this.cost.length),
+      });
+      this.dataCollection = {
+        labels: this.onlyKm(),
+        datasets: [
+          {
+            label: 'Data set',
+            backgroundColor: 'transparent',
+            borderColor: '#f87979',
+            pointBackgroundColor: "#842bd7",
+            data: this.onlyPrice()
+          },
+          {
+            label: 'Estimated Data',
+            backgroundColor: 'transparent',
+            borderColor: '#05a10b',
+            pointBackgroundColor: "#842bd7",
+            data: this.onlyEstimated()
+          }
+        ]
+      }
+    },
+
+    onlyKm() {
+      let kms = [];
+      let thisElem = this;
+      this.dataCSV.forEach(function (element) {
+        kms.push(Math.round(element.km * thisElem.norm));
+      });
+      return kms;
+    },
+
+    onlyPrice() {
+      let prices = [];
+      let thisElem = this;
+      this.dataCSV.forEach(function (element) {
+        prices.push(Math.round(element.price * thisElem.norm));
+      });
+      return prices;
+    },
+
+    onlyEstimated() {
+      let thisElem = this;
+      let estimations = [];
+      this.onlyKm().forEach(function (element) {
+        estimations.push(Math.round(thisElem.prixEstime(element)));
+      });
+      return estimations;
+    },
+
+    realValue(value) {
+      return Math.round(value * this.norm)
     },
 
     trainingScreenOn() {
       if (this.dataCSV !== null) {
-        console.log("yo");
         this.normalize_data();
         this.calculate_cost();
         this.training();
@@ -194,7 +271,7 @@ export default {
       else {
         this.$message({
           showClose: true,
-          message: "prix estimé :".concat(" ", this.prixEstime(kilometrage)),
+          message: "prix estimé :".concat(" ", Math.round(this.prixEstime(kilometrage)).toString()),
         });
       }
     },
@@ -214,5 +291,38 @@ export default {
 .actionButton {
   margin-top: 20px !important;
   font-size: 25px !important;
+  margin-bottom: 60px !important;
+}
+.gridData {
+  position: absolute;
+  right: 5%;
+}
+
+.gridInfo {
+  position: absolute;
+  left: 5%;
+}
+
+table {
+  border: 2px solid #42b983;
+  border-radius: 3px;
+  background-color: #fff;
+}
+
+th {
+  background-color: #42b983;
+  color: #ffffff;
+  font-weight: 900;
+}
+
+td {
+  background-color: #f9f9f9;
+  font-weight: 700;
+}
+
+th,
+td {
+  min-width: 120px;
+  padding: 10px 10px;
 }
 </style>
